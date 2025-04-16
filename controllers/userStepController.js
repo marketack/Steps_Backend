@@ -74,8 +74,8 @@ export const sendEmailToUsers = async (req, res) => {
 export const submitUserStep = async (req, res) => {
   try {
     const { stepId, answers } = req.body;
-    const existing = await UserStep.findOne({ user: req.user.id, step: stepId });
 
+    const existing = await UserStep.findOne({ user: req.user.id, step: stepId });
     if (existing) {
       return res.status(400).json({ message: 'Step already submitted.' });
     }
@@ -83,10 +83,13 @@ export const submitUserStep = async (req, res) => {
     const step = await Step.findById(stepId);
     if (!step) return res.status(404).json({ message: 'Step not found' });
 
+    const user = await User.findById(req.user.id); // Fetch user for role check
+
     const submission = await UserStep.create({
       user: req.user.id,
       step: stepId,
       answers,
+      approved: user.isPro === true, // Auto approve if isPro is true
     });
 
     res.status(201).json(submission);
@@ -107,7 +110,7 @@ export const getMySubmissions = async (req, res) => {
 export const getAllSubmissions = async (req, res) => {
   try {
     const submissions = await UserStep.find()
-      .populate('user', 'email username') // ← include username here
+      .populate('user', 'email username isPro') // ✅ include isPro
       .populate('step', 'stepNumber title');
     res.json(submissions);
   } catch (err) {
