@@ -1,18 +1,25 @@
+// controllers/auth.controller.js
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import User from '../models/User.js';
 import sendEmail from '../utils/sendEmail.js';
 
+const createAccessToken = (payload) =>
+  jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '15m' });
+
+const createRefreshToken = (payload) =>
+  jwt.sign(payload, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' });
+
 export async function register(req, res) {
   try {
     const { username, email, password } = req.body;
 
     const existing = await User.findOne({ email });
-    if (existing) return res.status(400).json({ message: 'Email already registered' });
+    if (existing) return res.status(400).json({ message: 'This email is already registered.' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const verificationToken = crypto.randomBytes(20).toString('hex');
+    const verificationToken = crypto.randomBytes(32).toString('hex');
 
     const user = new User({
       username,
@@ -26,21 +33,21 @@ export async function register(req, res) {
     const verifyLink = `${process.env.CLIENT_URL}/verify/${verificationToken}`;
     await sendEmail({
       to: email,
-      subject: 'Verify your email',
-      html: `<p>Hi ${username},</p><p>Click <a href="${verifyLink}">here</a> to verify your email.</p>`
+      subject: 'Confirm your email address',
+      html: `<p>Hello ${username},</p><p>Please <a href="${verifyLink}">click here</a> to confirm your email address and activate your account.</p><p>If you did not request this, simply ignore this email.</p>`
     });
 
-    res.status(201).json({ message: 'Registration successful. Please check your email to verify.' });
+    res.status(201).json({ message: 'Registration successful! Check your email to verify your account.' });
   } catch (err) {
     console.error('Register error:', err);
-    res.status(500).json({ message: 'Server error during registration' });
+    res.status(500).json({ message: 'Something went wrong during registration. Please try again.' });
   }
 }
 
 export async function verifyEmail(req, res) {
   try {
     const user = await User.findOne({ verificationToken: req.params.token });
-    if (!user) return res.status(400).json({ message: 'Invalid or expired token' });
+    if (!user) return res.status(400).json({ message: 'Verification link is invalid or has expired.' });
 
     user.verified = true;
     user.verificationToken = '';
@@ -48,32 +55,55 @@ export async function verifyEmail(req, res) {
 
     res.redirect(`${process.env.CLIENT_URL}/verified`);
   } catch (err) {
-    res.status(500).json({ message: 'Server error during verification' });
+    console.error('Verification error:', err);
+    res.status(500).json({ message: 'Error verifying email. Please try again later.' });
   }
 }
 
 export async function login(req, res) {
   try {
     const { email, password } = req.body;
-
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: 'User not found' });
-    if (!user.verified) return res.status(403).json({ message: 'Please verify your email first.' });
+
+    if (!user) return res.status(400).json({ message: 'Account not found with this email.' });
+    if (!user.verified) return res.status(403).json({ message: 'Please verify your email address to continue.' });
 
     const valid = await bcrypt.compare(password, user.password);
-    if (!valid) return res.status(401).json({ message: 'Invalid credentials' });
+    if (!valid) return res.status(401).json({ message: 'Invalid email or password.' });
 
-    const token = jwt.sign({ id: user._id, isAdmin: user.isAdmin }, process.env.JWT_SECRET, {
-      expiresIn: '1d'
+    const payload = { id: user._id, isAdmin: user.isAdmin };
+
+    const accessToken = createAccessToken(payload);
+    const refreshToken = createRefreshToken(payload);
+
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'Strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
 
     res.status(200).json({
-      token,
+      token: accessToken,
       isAdmin: user.isAdmin,
       userId: user._id,
       username: user.username
     });
   } catch (err) {
-    res.status(500).json({ message: 'Login error' });
+    console.error('Login error:', err);
+    res.status(500).json({ message: 'Login failed. Please try again later.' });
+  }
+}
+
+export async function refreshToken(req, res) {
+  const token = req.cookies.refreshToken;
+  if (!token) return res.status(401).json({ message: 'No refresh token provided.' });
+
+  try {
+    const user = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
+    const newAccessToken = createAccessToken({ id: user.id, isAdmin: user.isAdmin });
+    res.json({ token: newAccessToken });
+  } catch (err) {
+    return res.status(403).json({ message: 'Invalid or expired refresh token.' });
   }
 }
