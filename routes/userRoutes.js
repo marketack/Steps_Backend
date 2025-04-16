@@ -4,8 +4,10 @@ import {
   getCurrentUser,
   updateUser,
   deleteUser,
-  getAllUsers
+  getAllUsers,
+  updateUserProStatus
 } from '../controllers/userController.js';
+import adminMiddleware from '../middleware/adminMiddleware.js';
 
 const router = express.Router();
 
@@ -13,5 +15,6 @@ router.get('/me', auth, getCurrentUser);
 router.patch('/me', auth, updateUser);
 router.delete('/me', auth, deleteUser);
 router.get('/', auth, getAllUsers); // Admin only
+router.put('/:id/pro', auth, adminMiddleware, updateUserProStatus);
 
 export default router;
