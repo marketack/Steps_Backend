@@ -47,18 +47,24 @@ export async function register(req, res) {
 export async function verifyEmail(req, res) {
   try {
     const user = await User.findOne({ verificationToken: req.params.token });
-    if (!user) return res.status(400).json({ message: 'Verification link is invalid or has expired.' });
+
+    if (!user) {
+      // If token is invalid or already used
+      return res.redirect(`${process.env.CLIENT_URL}/verified?status=failed`);
+    }
 
     user.verified = true;
     user.verificationToken = '';
     await user.save();
 
-    res.redirect(`${process.env.CLIENT_URL}/verified`);
+    // Redirect to frontend success page
+    res.redirect(`${process.env.CLIENT_URL}/verified?status=success`);
   } catch (err) {
     console.error('Verification error:', err);
-    res.status(500).json({ message: 'Error verifying email. Please try again later.' });
+    res.redirect(`${process.env.CLIENT_URL}/verified?status=error`);
   }
 }
+
 
 export async function login(req, res) {
   try {
