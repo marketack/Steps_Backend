@@ -49,19 +49,17 @@ export async function verifyEmail(req, res) {
     const user = await User.findOne({ verificationToken: req.params.token });
 
     if (!user) {
-      // If token is invalid or already used
-      return res.redirect(`${process.env.CLIENT_URL}/verified?status=failed`);
+      return res.status(400).json({ message: 'Invalid or expired token.' });
     }
 
     user.verified = true;
     user.verificationToken = '';
     await user.save();
 
-    // Redirect to frontend success page
-    res.redirect(`${process.env.CLIENT_URL}/verified?status=success`);
+    res.status(200).json({ message: 'Email verified.' });
   } catch (err) {
     console.error('Verification error:', err);
-    res.redirect(`${process.env.CLIENT_URL}/verified?status=error`);
+    res.status(500).json({ message: 'Internal server error.' });
   }
 }
 
