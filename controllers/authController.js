@@ -10,12 +10,11 @@ const createAccessToken = (payload) =>
 const createRefreshToken = (payload) =>
   jwt.sign(payload, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' });
 
-/**
- * Register a new user and send verification email.
- */
+// REGISTER
 export async function register(req, res) {
   try {
     const { username, email, password } = req.body;
+    console.log('🔹 Registration attempt for:', email);
 
     const existing = await User.findOne({ email });
     if (existing) {
@@ -30,10 +29,11 @@ export async function register(req, res) {
       email,
       password: hashedPassword,
       verificationToken,
-      verified: false
+      verified: false,
     });
 
     await user.save();
+    console.log('✅ User saved to DB');
 
     const verifyLink = `${process.env.CLIENT_URL}/verify/${verificationToken}`;
     await sendEmail({
@@ -43,23 +43,23 @@ export async function register(req, res) {
         <p>Hello ${username},</p>
         <p>Please <a href="${verifyLink}">click here</a> to confirm your email address and activate your account.</p>
         <p>If you did not request this, simply ignore this email.</p>
-      `
+      `,
     });
+
+    console.log('📨 Verification email sent to:', email);
 
     res.status(201).json({ message: 'Registration successful! Check your email to verify your account.' });
   } catch (err) {
-    console.error('Register error:', err);
+    console.error('❌ Register error:', err);
     res.status(500).json({ message: 'Something went wrong during registration.' });
   }
 }
 
-/**
- * Verify email token triggered by frontend.
- * Frontend calls this from /verify/:token page
- */
+// VERIFY EMAIL
 export async function verifyEmail(req, res) {
   try {
-    const user = await User.findOne({ verificationToken: req.params.token });
+    const token = req.params.token;
+    const user = await User.findOne({ verificationToken: token });
 
     if (!user) {
       return res.status(400).json({ message: 'Invalid or expired verification link.' });
@@ -69,16 +69,15 @@ export async function verifyEmail(req, res) {
     user.verificationToken = '';
     await user.save();
 
+    console.log(`✅ Email verified for: ${user.email}`);
     return res.status(200).json({ message: 'Email verified successfully.' });
   } catch (err) {
-    console.error('Verification error:', err);
+    console.error('❌ Verification error:', err);
     res.status(500).json({ message: 'Error verifying email.' });
   }
 }
 
-/**
- * Login with email and password
- */
+// LOGIN
 export async function login(req, res) {
   try {
     const { email, password } = req.body;
@@ -105,24 +104,22 @@ export async function login(req, res) {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'Strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
     res.status(200).json({
       token: accessToken,
       isAdmin: user.isAdmin,
       userId: user._id,
-      username: user.username
+      username: user.username,
     });
   } catch (err) {
-    console.error('Login error:', err);
+    console.error('❌ Login error:', err);
     res.status(500).json({ message: 'Login failed. Please try again later.' });
   }
 }
 
-/**
- * Refresh access token using HTTP-only refresh cookie
- */
+// REFRESH TOKEN
 export async function refreshToken(req, res) {
   const token = req.cookies.refreshToken;
   if (!token) {
@@ -135,7 +132,7 @@ export async function refreshToken(req, res) {
 
     return res.status(200).json({ token: newAccessToken });
   } catch (err) {
-    console.error('Refresh token error:', err);
+    console.error('❌ Refresh token error:', err);
     return res.status(403).json({ message: 'Invalid or expired refresh token.' });
   }
 }
